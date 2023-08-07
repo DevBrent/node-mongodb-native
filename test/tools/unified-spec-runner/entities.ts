@@ -357,6 +357,7 @@ export type Entity =
   | AbstractCursor
   | UnifiedChangeStream
   | GridFSBucket
+  | Document
   | ClientEncryption
   | TopologyDescription // From recordTopologyDescription operation
   | Document; // Results from operations
@@ -370,6 +371,7 @@ export type EntityCtor =
   | typeof AbstractCursor
   | typeof GridFSBucket
   | typeof UnifiedThread
+  | typeof Document
   | ClientEncryption;
 
 export type EntityTypeId =
@@ -381,7 +383,8 @@ export type EntityTypeId =
   | 'thread'
   | 'cursor'
   | 'stream'
-  | 'clientEncryption';
+  | 'clientEncryption'
+  | 'error';
 
 const ENTITY_CTORS = new Map<EntityTypeId, EntityCtor>();
 ENTITY_CTORS.set('client', UnifiedMongoClient);
@@ -392,6 +395,7 @@ ENTITY_CTORS.set('bucket', GridFSBucket);
 ENTITY_CTORS.set('thread', UnifiedThread);
 ENTITY_CTORS.set('cursor', AbstractCursor);
 ENTITY_CTORS.set('stream', ChangeStream);
+ENTITY_CTORS.set('error', Document);
 
 export class EntitiesMap<E = Entity> extends Map<string, E> {
   failPoints: FailPointMap;
@@ -435,6 +439,7 @@ export class EntitiesMap<E = Entity> extends Map<string, E> {
   getEntity(type: 'thread', key: string, assertExists?: boolean): UnifiedThread;
   getEntity(type: 'cursor', key: string, assertExists?: boolean): AbstractCursor;
   getEntity(type: 'stream', key: string, assertExists?: boolean): UnifiedChangeStream;
+  getEntity(type: 'error', key: string, assertExists?: boolean): Document[];
   getEntity(type: 'clientEncryption', key: string, assertExists?: boolean): ClientEncryption;
   getEntity(type: EntityTypeId, key: string, assertExists = true): Entity | undefined {
     const entity = this.get(key);

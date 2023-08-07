@@ -377,6 +377,47 @@ operations.set('listIndexes', async ({ entities, operation }) => {
   return collection.listIndexes(operation.arguments!).toArray();
 });
 
+operations.set('loop', async ({ entities, operation, client, testConfig  }) => {
+  const controller = new AbortController();
+  process.on('SIGINT', () => {
+    controller.abort('Process received SIGINT, aborting operation loop.');
+  });
+  const args = operation.arguments!;
+  const storeIterationsAsEntity = args.storeIterationsAsEntity;
+  const storeSuccessesAsEntity = args.storeSuccessesAsEntity;
+  const storeErrorsAsEntity = args.storeErrorsAsEntity;
+  const storeFailuresAsEntity = args.storeFailuresAsEntity;
+
+  if (storeErrorsAsEntity) {
+    entities.set(storeErrorsAsEntity, []);
+  }
+  if (storeFailuresAsEntity) {
+    entities.set(storeFailuresAsEntity, []);
+  }
+  let iterations = 0;
+  let successes = 0;
+  while (!controller.signal.aborted) {
+    if (storeIterationsAsEntity) {
+      entities.set(storeIterationsAsEntity, iterations++);
+    }
+    for (const op of args.operations) {
+      console.log('op', op);
+      try {
+        await executeOperationAndCheck(op, entities, client, testConfig);
+        if (storeSuccessesAsEntity) {
+          entities.set(storeSuccessesAsEntity, successes++);
+        }
+      } catch (error) {
+        if (storeErrorsAsEntity) {
+          entities.getEntity('error', storeErrorsAsEntity).push({ error: error.message, time: Date.now() })
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+});
+
 operations.set('replaceOne', async ({ entities, operation }) => {
   const collection = entities.getEntity('collection', operation.object);
   const { filter, replacement, ...opts } = operation.arguments!;
