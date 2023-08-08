@@ -7,7 +7,7 @@ import { RunCommandOperation } from '../operations/run_command';
 import type { ReadConcernLike } from '../read_concern';
 import type { ReadPreferenceLike } from '../read_preference';
 import type { ClientSession } from '../sessions';
-import { type Callback, ns } from '../utils';
+import { ns } from '../utils';
 import { AbstractCursor } from './abstract_cursor';
 
 /** @public */
