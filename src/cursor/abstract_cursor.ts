@@ -1,5 +1,4 @@
 import { Readable, Transform } from 'stream';
-import { promisify } from 'util';
 
 import { type BSONSerializeOptions, type Document, Long, pluckBSONSerializeOptions } from '../bson';
 import {
@@ -21,7 +20,7 @@ import { ReadConcern, type ReadConcernLike } from '../read_concern';
 import { ReadPreference, type ReadPreferenceLike } from '../read_preference';
 import type { Server } from '../sdam/server';
 import { ClientSession, maybeClearPinnedConnection } from '../sessions';
-import { type Callback, List, type MongoDBNamespace, ns } from '../utils';
+import { List, type MongoDBNamespace, ns } from '../utils';
 
 /** @internal */
 const kId = Symbol('id');
@@ -305,7 +304,7 @@ export abstract class AbstractCursor<
             const message =
               'Cursor returned a `null` document, but the cursor is not exhausted.  Mapping documents to `null` is not supported in the cursor transform.';
 
-            await cleanupCursorAsync(this, { needsToEmitClosed: true }).catch(() => null);
+            await cleanupCursor(this, { needsToEmitClosed: true }).catch(() => null);
 
             throw new MongoAPIError(message);
           }
@@ -414,7 +413,7 @@ export abstract class AbstractCursor<
   async close(): Promise<void> {
     const needsToEmitClosed = !this[kClosed];
     this[kClosed] = true;
-    await cleanupCursorAsync(this, { needsToEmitClosed });
+    await cleanupCursor(this, { needsToEmitClosed });
   }
 
   /**
@@ -608,13 +607,10 @@ export abstract class AbstractCursor<
   abstract clone(): AbstractCursor<TSchema>;
 
   /** @internal */
-  protected abstract _initialize(
-    session: ClientSession | undefined,
-    callback: Callback<ExecutionResult>
-  ): void;
+  protected abstract _initialize(session: ClientSession | undefined): Promise<ExecutionResult>;
 
   /** @internal */
-  _getMore(batchSize: number, callback: Callback<Document>): void {
+  getMore(batchSize: number): Promise<Document> {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const getMoreOperation = new GetMoreOperation(this[kNamespace], this[kId]!, this[kServer]!, {
       ...this[kOptions],
@@ -622,7 +618,7 @@ export abstract class AbstractCursor<
       batchSize
     });
 
-    executeOperation(this[kClient], getMoreOperation, callback);
+    return executeOperation(this[kClient], getMoreOperation);
   }
 
   /**
@@ -632,51 +628,48 @@ export abstract class AbstractCursor<
    * operation.  We cannot refactor to use the abstract _initialize method without
    * a significant refactor.
    */
-  [kInit](callback: Callback<TSchema | null>): void {
-    this._initialize(this[kSession], (error, state) => {
-      if (state) {
-        const response = state.response;
-        this[kServer] = state.server;
+  async [kInit](): Promise<TSchema | undefined> {
+    const state = await this._initialize(this[kSession]);
+    const response = state.response;
+    this[kServer] = state.server;
 
-        if (response.cursor) {
-          // TODO(NODE-2674): Preserve int64 sent from MongoDB
-          this[kId] =
-            typeof response.cursor.id === 'number'
-              ? Long.fromNumber(response.cursor.id)
-              : typeof response.cursor.id === 'bigint'
-              ? Long.fromBigInt(response.cursor.id)
-              : response.cursor.id;
+    try {
+      if (response.cursor) {
+        // TODO(NODE-2674): Preserve int64 sent from MongoDB
+        this[kId] =
+          typeof response.cursor.id === 'number'
+            ? Long.fromNumber(response.cursor.id)
+            : typeof response.cursor.id === 'bigint'
+            ? Long.fromBigInt(response.cursor.id)
+            : response.cursor.id;
 
-          if (response.cursor.ns) {
-            this[kNamespace] = ns(response.cursor.ns);
-          }
-
-          this[kDocuments].pushMany(response.cursor.firstBatch);
+        if (response.cursor.ns) {
+          this[kNamespace] = ns(response.cursor.ns);
         }
 
-        // When server responses return without a cursor document, we close this cursor
-        // and return the raw server response. This is often the case for explain commands
-        // for example
-        if (this[kId] == null) {
-          this[kId] = Long.ZERO;
-          // TODO(NODE-3286): ExecutionResult needs to accept a generic parameter
-          this[kDocuments].push(state.response as TODO_NODE_3286);
-        }
+        this[kDocuments].pushMany(response.cursor.firstBatch);
+      }
+
+      // When server responses return without a cursor document, we close this cursor
+      // and return the raw server response. This is often the case for explain commands
+      // for example
+      if (this[kId] == null) {
+        this[kId] = Long.ZERO;
+        // TODO(NODE-3286): ExecutionResult needs to accept a generic parameter
+        this[kDocuments].push(state.response as TODO_NODE_3286);
       }
 
       // the cursor is now initialized, even if an error occurred or it is dead
       this[kInitialized] = true;
+    } catch (error) {
+      await cleanupCursor(this, { error });
+    }
 
-      if (error) {
-        return cleanupCursor(this, { error }, () => callback(error, undefined));
-      }
+    if (cursorIsDead(this)) {
+      await cleanupCursor(this, undefined);
+    }
 
-      if (cursorIsDead(this)) {
-        return cleanupCursor(this, undefined, () => callback());
-      }
-
-      callback();
-    });
+    return;
   }
 }
 
@@ -713,7 +706,7 @@ async function next<T>(
       try {
         return cursor[kTransform](doc);
       } catch (error) {
-        await cleanupCursorAsync(cursor, { error, needsToEmitClosed: true }).catch(() => {
+        await cleanupCursor(cursor, { error, needsToEmitClosed: true }).catch(() => {
           // `cleanupCursorAsync` should never throw, but if it does we want to throw the original
           // error instead.
         });
@@ -726,8 +719,7 @@ async function next<T>(
 
   if (cursorId == null) {
     // All cursors must operate within a session, one must be made implicitly if not explicitly provided
-    const init = promisify(cb => cursor[kInit](cb));
-    await init();
+    await cursor[kInit]();
     return next(cursor, { blocking, transform });
   }
 
@@ -735,22 +727,19 @@ async function next<T>(
     // if the cursor is dead, we clean it up
     // cleanupCursorAsync should never throw, but if it does it indicates a bug in the driver
     // and we should surface the error
-    await cleanupCursorAsync(cursor, {});
+    await cleanupCursor(cursor, {});
     return null;
   }
 
   // otherwise need to call getMore
   const batchSize = cursor[kOptions].batchSize || 1000;
-  const getMore = promisify((batchSize: number, cb: Callback<Document | undefined>) =>
-    cursor._getMore(batchSize, cb)
-  );
 
   let response: Document | undefined;
   try {
-    response = await getMore(batchSize);
+    response = await cursor.getMore(batchSize);
   } catch (error) {
     if (error) {
-      await cleanupCursorAsync(cursor, { error }).catch(() => {
+      await cleanupCursor(cursor, { error }).catch(() => {
         // `cleanupCursorAsync` should never throw, but if it does we want to throw the original
         // error instead.
       });
@@ -778,7 +767,7 @@ async function next<T>(
     //
     // cleanupCursorAsync should never throw, but if it does it indicates a bug in the driver
     // and we should surface the error
-    await cleanupCursorAsync(cursor, {});
+    await cleanupCursor(cursor, {});
   }
 
   if (cursor[kDocuments].length === 0 && blocking === false) {
@@ -793,13 +782,10 @@ function cursorIsDead(cursor: AbstractCursor): boolean {
   return !!cursorId && cursorId.isZero();
 }
 
-const cleanupCursorAsync = promisify(cleanupCursor);
-
-function cleanupCursor(
+async function cleanupCursor(
   cursor: AbstractCursor,
-  options: { error?: AnyError | undefined; needsToEmitClosed?: boolean } | undefined,
-  callback: Callback
-): void {
+  options: { error?: AnyError | undefined; needsToEmitClosed?: boolean } | undefined
+): Promise<void> {
   const cursorId = cursor[kId];
   const cursorNs = cursor[kNamespace];
   const server = cursor[kServer];
@@ -826,9 +812,7 @@ function cleanupCursor(
 
     if (session) {
       if (session.owner === cursor) {
-        session.endSession({ error }).finally(() => {
-          callback();
-        });
+        await session.endSession({ error });
         return;
       }
 
@@ -837,16 +821,17 @@ function cleanupCursor(
       }
     }
 
-    return callback();
+    return;
   }
 
-  function completeCleanup() {
+  async function completeCleanup() {
     if (session) {
       if (session.owner === cursor) {
-        session.endSession({ error }).finally(() => {
+        try {
+          await session.endSession({ error });
+        } finally {
           cursor.emit(AbstractCursor.CLOSE);
-          callback();
-        });
+        }
         return;
       }
 
@@ -856,7 +841,7 @@ function cleanupCursor(
     }
 
     cursor.emit(AbstractCursor.CLOSE);
-    return callback();
+    return;
   }
 
   cursor[kKilled] = true;
@@ -865,12 +850,14 @@ function cleanupCursor(
     return completeCleanup();
   }
 
-  executeOperation(
-    cursor[kClient],
-    new KillCursorsOperation(cursorId, cursorNs, server, { session })
-  )
-    .catch(() => null)
-    .finally(completeCleanup);
+  try {
+    await executeOperation(
+      cursor[kClient],
+      new KillCursorsOperation(cursorId, cursorNs, server, { session })
+    ).catch(() => null);
+  } finally {
+    await completeCleanup();
+  }
 }
 
 /** @internal */
