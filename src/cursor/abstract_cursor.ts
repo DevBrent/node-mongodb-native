@@ -610,7 +610,7 @@ export abstract class AbstractCursor<
   protected abstract _initialize(session: ClientSession | undefined): Promise<ExecutionResult>;
 
   /** @internal */
-  getMore(batchSize: number): Promise<Document> {
+  async getMore(batchSize: number): Promise<Document> {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const getMoreOperation = new GetMoreOperation(this[kNamespace], this[kId]!, this[kServer]!, {
       ...this[kOptions],
@@ -628,7 +628,7 @@ export abstract class AbstractCursor<
    * operation.  We cannot refactor to use the abstract _initialize method without
    * a significant refactor.
    */
-  async [kInit](): Promise<TSchema | undefined> {
+  async [kInit](): Promise<void> {
     const state = await this._initialize(this[kSession]);
     const response = state.response;
     this[kServer] = state.server;
