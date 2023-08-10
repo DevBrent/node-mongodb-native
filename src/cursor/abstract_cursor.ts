@@ -629,11 +629,10 @@ export abstract class AbstractCursor<
    * a significant refactor.
    */
   async [kInit](): Promise<void> {
-    const state = await this._initialize(this[kSession]);
-    const response = state.response;
-    this[kServer] = state.server;
-
     try {
+      const state = await this._initialize(this[kSession]);
+      const response = state.response;
+      this[kServer] = state.server;
       if (response.cursor) {
         // TODO(NODE-2674): Preserve int64 sent from MongoDB
         this[kId] =
@@ -663,6 +662,7 @@ export abstract class AbstractCursor<
       this[kInitialized] = true;
     } catch (error) {
       await cleanupCursor(this, { error });
+      throw error;
     }
 
     if (cursorIsDead(this)) {
