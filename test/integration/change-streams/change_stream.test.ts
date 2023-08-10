@@ -1966,37 +1966,31 @@ describe('ChangeStream resumability', function () {
       }
 
       for (const { error, code, message } of resumableErrorCodes) {
-        it(
-          `resumes on error code ${code} (${error})`,
-          { requires: { topology: '!single', mongodb: '<4.2' } },
-          async function () {
-            changeStream = collection.watch([]);
-            await initIteratorMode(changeStream);
+        it(`resumes on error code ${code} (${error})`, async function () {
+          changeStream = collection.watch([]);
+          await initIteratorMode(changeStream);
 
-            // on 3.6 servers, no postBatchResumeToken is sent back in the initial aggregate response.
-            // This means that a resume token isn't cached until the first change has been iterated.
-            // In order to test the resume, we need to ensure that at least one document has
-            // been iterated so we have a resume token to resume on.
-            await collection.insertOne({ name: 'bailey' });
-            await changeStream.next();
+          // on 3.6 servers, no postBatchResumeToken is sent back in the initial aggregate response.
+          // This means that a resume token isn't cached until the first change has been iterated.
+          // In order to test the resume, we need to ensure that at least one document has
+          // been iterated so we have a resume token to resume on.
+          await collection.insertOne({ name: 'bailey' });
+          await changeStream.next();
 
-            const mock = sinon
-              .stub(changeStream.cursor, 'getMore')
-              .callsFake((_batchSize, callback) => {
-                mock.restore();
-                const error = new MongoServerError({ message: message });
-                error.code = code;
-                callback(error);
-              });
+          const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(_batchSize => {
+            mock.restore();
+            const error = new MongoServerError({ message: message });
+            error.code = code;
+            throw error;
+          });
 
-            await collection.insertOne({ name: 'bailey' });
+          await collection.insertOne({ name: 'bailey' });
 
-            const change = await changeStream.next();
+          const change = await changeStream.next();
 
-            expect(change).to.have.property('operationType', 'insert');
-            expect(aggregateEvents).to.have.lengthOf(2);
-          }
-        );
+          expect(change).to.have.property('operationType', 'insert');
+          expect(aggregateEvents).to.have.lengthOf(2);
+        });
       }
 
       it(
