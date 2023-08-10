@@ -2,7 +2,6 @@ import { expect } from 'chai';
 import { once } from 'events';
 import * as sinon from 'sinon';
 import { setTimeout } from 'timers';
-import { promisify } from 'util';
 
 import {
   AbstractCursor,

@@ -5,7 +5,6 @@ import { gte, lt } from 'semver';
 import * as sinon from 'sinon';
 import { PassThrough } from 'stream';
 import { setTimeout } from 'timers';
-import { promisify } from 'util';
 
 import {
   AbstractCursor,
