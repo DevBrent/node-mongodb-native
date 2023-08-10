@@ -1982,7 +1982,7 @@ describe('ChangeStream resumability', function () {
             await changeStream.next();
 
             const mock = sinon
-              .stub(changeStream.cursor, '_getMore')
+              .stub(changeStream.cursor, 'getMore')
               .callsFake((_batchSize, callback) => {
                 mock.restore();
                 const error = new MongoServerError({ message: message });
@@ -2148,7 +2148,7 @@ describe('ChangeStream resumability', function () {
             await changeStream.next();
 
             const mock = sinon
-              .stub(changeStream.cursor, '_getMore')
+              .stub(changeStream.cursor, 'getMore')
               .callsFake((_batchSize, callback) => {
                 mock.restore();
                 const error = new MongoServerError({ message: message });
@@ -2321,7 +2321,7 @@ describe('ChangeStream resumability', function () {
             await changeStream.next();
 
             const mock = sinon
-              .stub(changeStream.cursor, '_getMore')
+              .stub(changeStream.cursor, 'getMore')
               .callsFake((_batchSize, callback) => {
                 mock.restore();
                 const error = new MongoServerError({ message: message });
@@ -2465,7 +2465,7 @@ describe('ChangeStream resumability', function () {
             await changeStreamIterator.next();
 
             const mock = sinon
-              .stub(changeStream.cursor, '_getMore')
+              .stub(changeStream.cursor, 'getMore')
               .callsFake((_batchSize, callback) => {
                 mock.restore();
                 const error = new MongoServerError({ message });
