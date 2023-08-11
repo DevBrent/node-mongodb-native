@@ -1,3 +1,6 @@
+import { once } from 'node:events';
+import * as process from 'node:process';
+
 import { expect } from 'chai';
 import * as dns from 'dns';
 import * as sinon from 'sinon';
@@ -42,6 +45,13 @@ describe('Connection String', function () {
       username: 'testing',
       password: 'llamas'
     });
+  });
+
+  it('throws an error related to the option that was given an empty value', function () {
+    expect(() => parseOptions('mongodb://localhost?tls=', {})).to.throw(
+      MongoAPIError,
+      /tls" cannot/i
+    );
   });
 
   it('should provide a default port if one is not provided', function () {
@@ -122,21 +132,18 @@ describe('Connection String', function () {
 
   describe('readPreferenceTags option', function () {
     context('when the option is passed in the uri', () => {
-      it('should throw an error if no value is passed for readPreferenceTags', () => {
-        expect(() => parseOptions('mongodb://hostname?readPreferenceTags=')).to.throw(
-          MongoAPIError
-        );
-      });
       it('should parse a single read preference tag', () => {
         const options = parseOptions('mongodb://hostname?readPreferenceTags=bar:foo');
         expect(options.readPreference.tags).to.deep.equal([{ bar: 'foo' }]);
       });
+
       it('should parse multiple readPreferenceTags', () => {
         const options = parseOptions(
           'mongodb://hostname?readPreferenceTags=bar:foo&readPreferenceTags=baz:bar'
         );
         expect(options.readPreference.tags).to.deep.equal([{ bar: 'foo' }, { baz: 'bar' }]);
       });
+
       it('should parse multiple readPreferenceTags for the same key', () => {
         const options = parseOptions(
           'mongodb://hostname?readPreferenceTags=bar:foo&readPreferenceTags=bar:banana&readPreferenceTags=baz:bar'
@@ -147,6 +154,19 @@ describe('Connection String', function () {
           { baz: 'bar' }
         ]);
       });
+
+      it('should parse multiple and empty readPreferenceTags', () => {
+        const options = parseOptions(
+          'mongodb://hostname?readPreferenceTags=bar:foo&readPreferenceTags=baz:bar&readPreferenceTags='
+        );
+        expect(options.readPreference.tags).to.deep.equal([{ bar: 'foo' }, { baz: 'bar' }, {}]);
+      });
+
+      it('will set "__proto__" as own property on readPreferenceTag', () => {
+        const options = parseOptions('mongodb://hostname?readPreferenceTags=__proto__:foo');
+        expect(options.readPreference.tags?.[0]).to.have.own.property('__proto__', 'foo');
+        expect(Object.getPrototypeOf(options.readPreference.tags?.[0])).to.be.null;
+      });
     });
 
     context('when the option is passed in the options object', () => {
@@ -156,12 +176,14 @@ describe('Connection String', function () {
         });
         expect(options.readPreference.tags).to.deep.equal([]);
       });
+
       it('should parse a single readPreferenceTags object', () => {
         const options = parseOptions('mongodb://hostname?', {
           readPreferenceTags: [{ bar: 'foo' }]
         });
         expect(options.readPreference.tags).to.deep.equal([{ bar: 'foo' }]);
       });
+
       it('should parse multiple readPreferenceTags', () => {
         const options = parseOptions('mongodb://hostname?', {
           readPreferenceTags: [{ bar: 'foo' }, { baz: 'bar' }]
@@ -189,13 +211,38 @@ describe('Connection String', function () {
     });
   });
 
-  it('should parse boolean values', function () {
-    let options = parseOptions('mongodb://hostname?retryWrites=1');
-    expect(options.retryWrites).to.equal(true);
-    options = parseOptions('mongodb://hostname?retryWrites=false');
-    expect(options.retryWrites).to.equal(false);
-    options = parseOptions('mongodb://hostname?retryWrites=t');
-    expect(options.retryWrites).to.equal(true);
+  context('boolean options', function () {
+    const valuesExpectations: { value: string; expectation: 'error' | boolean }[] = [
+      { value: 'true', expectation: true },
+      { value: 'false', expectation: false },
+      { value: '-1', expectation: 'error' },
+      { value: '1', expectation: 'error' },
+      { value: '0', expectation: 'error' },
+      { value: 't', expectation: 'error' },
+      { value: 'f', expectation: 'error' },
+      { value: 'n', expectation: 'error' },
+      { value: 'y', expectation: 'error' },
+      { value: 'yes', expectation: 'error' },
+      { value: 'no', expectation: 'error' },
+      { value: 'unknown', expectation: 'error' }
+    ];
+    for (const { value, expectation } of valuesExpectations) {
+      const connString = `mongodb://hostname?retryWrites=${value}`;
+      context(`when provided '${value}'`, function () {
+        if (expectation === 'error') {
+          it('throws MongoParseError', function () {
+            expect(() => {
+              parseOptions(connString);
+            }).to.throw(MongoParseError);
+          });
+        } else {
+          it(`parses as ${expectation}`, function () {
+            const options = parseOptions(connString);
+            expect(options).to.have.property('retryWrites', expectation);
+          });
+        }
+      });
+    }
   });
 
   it('should parse compression options', function () {
@@ -493,6 +540,18 @@ describe('Connection String', function () {
       );
     });
 
+    it('throws an error for repeated options that can only appear once', function () {
+      // At the time of writing, readPreferenceTags is the only options that can be repeated
+      expect(() => parseOptions('mongodb://localhost/?compressors=zstd&compressors=zstd')).to.throw(
+        MongoInvalidArgumentError,
+        /cannot appear more than once/
+      );
+      expect(() => parseOptions('mongodb://localhost/?tls=true&tls=true')).to.throw(
+        MongoInvalidArgumentError,
+        /cannot appear more than once/
+      );
+    });
+
     it('should validate authMechanism', function () {
       expect(() => parseOptions('mongodb://localhost/?authMechanism=DOGS')).to.throw(
         MongoParseError,
@@ -729,5 +788,41 @@ describe('Connection String', function () {
   it('rejects a connection string with an unsupported scheme', () => {
     expect(() => new MongoClient('mango://localhost:23')).to.throw(/Invalid scheme/i);
     expect(() => new MongoClient('mango+srv://localhost:23')).to.throw(/Invalid scheme/i);
+  });
+
+  describe('when deprecated options are used', () => {
+    it('useNewUrlParser emits a warning', async () => {
+      let willBeWarning = once(process, 'warning');
+      parseOptions('mongodb://host?useNewUrlParser=true');
+      let [warning] = await willBeWarning;
+      expect(warning)
+        .to.have.property('message')
+        .that.matches(/useNewUrlParser has no effect/);
+
+      willBeWarning = once(process, 'warning');
+      //@ts-expect-error: using unsupported option on purpose
+      parseOptions('mongodb://host', { useNewUrlParser: true });
+      [warning] = await willBeWarning;
+      expect(warning)
+        .to.have.property('message')
+        .that.matches(/useNewUrlParser has no effect/);
+    });
+
+    it('useUnifiedTopology emits a warning', async () => {
+      let willBeWarning = once(process, 'warning');
+      parseOptions('mongodb://host?useUnifiedTopology=true');
+      let [warning] = await willBeWarning;
+      expect(warning)
+        .to.have.property('message')
+        .that.matches(/useUnifiedTopology has no effect/);
+
+      willBeWarning = once(process, 'warning');
+      //@ts-expect-error: using unsupported option on purpose
+      parseOptions('mongodb://host', { useUnifiedTopology: true });
+      [warning] = await willBeWarning;
+      expect(warning)
+        .to.have.property('message')
+        .that.matches(/useUnifiedTopology has no effect/);
+    });
   });
 });

@@ -1,5 +1,4 @@
 import * as dns from 'dns';
-import * as fs from 'fs';
 import ConnectionString from 'mongodb-connection-string-url';
 import { URLSearchParams } from 'url';
 
@@ -34,7 +33,6 @@ import type { TagSet } from './sdam/server_description';
 import {
   DEFAULT_PK_FACTORY,
   emitWarning,
-  emitWarningOnce,
   HostAddress,
   isRecord,
   matchesParentDomain,
@@ -163,29 +161,16 @@ function checkTLSOptions(allOptions: CaseInsensitiveMap): void {
   check('tlsAllowInvalidCertificates', 'tlsDisableOCSPEndpointCheck');
   check('tlsDisableCertificateRevocationCheck', 'tlsDisableOCSPEndpointCheck');
 }
-
-const TRUTHS = new Set(['true', 't', '1', 'y', 'yes']);
-const FALSEHOODS = new Set(['false', 'f', '0', 'n', 'no', '-1']);
 function getBoolean(name: string, value: unknown): boolean {
   if (typeof value === 'boolean') return value;
-  const valueString = String(value).toLowerCase();
-  if (TRUTHS.has(valueString)) {
-    if (valueString !== 'true') {
-      emitWarningOnce(
-        `deprecated value for ${name} : ${valueString} - please update to ${name} : true instead`
-      );
-    }
-    return true;
+  switch (value) {
+    case 'true':
+      return true;
+    case 'false':
+      return false;
+    default:
+      throw new MongoParseError(`${name} must be either "true" or "false"`);
   }
-  if (FALSEHOODS.has(valueString)) {
-    if (valueString !== 'false') {
-      emitWarningOnce(
-        `deprecated value for ${name} : ${valueString} - please update to ${name} : false instead`
-      );
-    }
-    return false;
-  }
-  throw new MongoParseError(`Expected ${name} to be stringified boolean value, got: ${value}`);
 }
 
 function getIntFromOptions(name: string, value: unknown): number {
@@ -205,6 +190,9 @@ function getUIntFromOptions(name: string, value: unknown): number {
 }
 
 function* entriesFromString(value: string): Generator<[string, string]> {
+  if (value === '') {
+    return;
+  }
   const keyValuePairs = value.split(',');
   for (const keyValue of keyValuePairs) {
     const [key, value] = keyValue.split(/:(.*)/);
@@ -291,10 +279,18 @@ export function parseOptions(
   }
 
   for (const key of url.searchParams.keys()) {
-    const values = [...url.searchParams.getAll(key)];
+    const values = url.searchParams.getAll(key);
 
-    if (values.includes('')) {
-      throw new MongoAPIError('URI cannot contain options with no value');
+    const isReadPreferenceTags = /readPreferenceTags/i.test(key);
+
+    if (!isReadPreferenceTags && values.length > 1) {
+      throw new MongoInvalidArgumentError(
+        `URI option "${key}" cannot appear more than once in the connection string`
+      );
+    }
+
+    if (!isReadPreferenceTags && values.includes('')) {
+      throw new MongoAPIError(`URI option "${key}" cannot be specified with no value`);
     }
 
     if (!urlOptions.has(key)) {
@@ -1097,16 +1093,10 @@ export const OPTIONS = {
     }
   },
   tlsCAFile: {
-    target: 'ca',
-    transform({ values: [value] }) {
-      return fs.readFileSync(String(value), { encoding: 'ascii' });
-    }
+    type: 'string'
   },
   tlsCertificateKeyFile: {
-    target: 'key',
-    transform({ values: [value] }) {
-      return fs.readFileSync(String(value), { encoding: 'ascii' });
-    }
+    type: 'string'
   },
   tlsCertificateKeyFilePassword: {
     target: 'passphrase',
@@ -1219,9 +1209,17 @@ export const OPTIONS = {
   pfx: { type: 'any' },
   secureProtocol: { type: 'any' },
   index: { type: 'any' },
-  // Legacy Options, these are unused but left here to avoid errors with CSFLE lib
-  useNewUrlParser: { type: 'boolean' } as OptionDescriptor,
-  useUnifiedTopology: { type: 'boolean' } as OptionDescriptor,
+  // Legacy options from v3 era
+  useNewUrlParser: {
+    type: 'boolean',
+    deprecated:
+      'useNewUrlParser has no effect since Node.js Driver version 4.0.0 and will be removed in the next major version'
+  } as OptionDescriptor,
+  useUnifiedTopology: {
+    type: 'boolean',
+    deprecated:
+      'useUnifiedTopology has no effect since Node.js Driver version 4.0.0 and will be removed in the next major version'
+  } as OptionDescriptor,
   // MongoLogger
   // TODO(NODE-4849): Tighten the type of mongodbLogPath
   mongodbLogPath: { type: 'any' }

@@ -53,7 +53,6 @@ import {
   CreateIndexesOperation,
   type CreateIndexesOptions,
   CreateIndexOperation,
-  DropIndexesOperation,
   type DropIndexesOptions,
   DropIndexOperation,
   type IndexDescription,
@@ -646,11 +645,16 @@ export class Collection<TSchema extends Document = Document> {
    *
    * @param options - Optional settings for the command
    */
-  async dropIndexes(options?: DropIndexesOptions): Promise<Document> {
-    return executeOperation(
-      this.client,
-      new DropIndexesOperation(this as TODO_NODE_3286, resolveOptions(this, options))
-    );
+  async dropIndexes(options?: DropIndexesOptions): Promise<boolean> {
+    try {
+      await executeOperation(
+        this.client,
+        new DropIndexOperation(this as TODO_NODE_3286, '*', resolveOptions(this, options))
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -815,8 +819,8 @@ export class Collection<TSchema extends Document = Document> {
   async findOneAndDelete(
     filter: Filter<TSchema>,
     options: FindOneAndDeleteOptions
-  ): Promise<ModifyResult<TSchema>>;
-  async findOneAndDelete(filter: Filter<TSchema>): Promise<ModifyResult<TSchema>>;
+  ): Promise<WithId<TSchema> | null>;
+  async findOneAndDelete(filter: Filter<TSchema>): Promise<WithId<TSchema> | null>;
   async findOneAndDelete(
     filter: Filter<TSchema>,
     options?: FindOneAndDeleteOptions
@@ -852,11 +856,11 @@ export class Collection<TSchema extends Document = Document> {
     filter: Filter<TSchema>,
     replacement: WithoutId<TSchema>,
     options: FindOneAndReplaceOptions
-  ): Promise<ModifyResult<TSchema>>;
+  ): Promise<WithId<TSchema> | null>;
   async findOneAndReplace(
     filter: Filter<TSchema>,
     replacement: WithoutId<TSchema>
-  ): Promise<ModifyResult<TSchema>>;
+  ): Promise<WithId<TSchema> | null>;
   async findOneAndReplace(
     filter: Filter<TSchema>,
     replacement: WithoutId<TSchema>,
@@ -894,11 +898,11 @@ export class Collection<TSchema extends Document = Document> {
     filter: Filter<TSchema>,
     update: UpdateFilter<TSchema>,
     options: FindOneAndUpdateOptions
-  ): Promise<ModifyResult<TSchema>>;
+  ): Promise<WithId<TSchema> | null>;
   async findOneAndUpdate(
     filter: Filter<TSchema>,
     update: UpdateFilter<TSchema>
-  ): Promise<ModifyResult<TSchema>>;
+  ): Promise<WithId<TSchema> | null>;
   async findOneAndUpdate(
     filter: Filter<TSchema>,
     update: UpdateFilter<TSchema>,

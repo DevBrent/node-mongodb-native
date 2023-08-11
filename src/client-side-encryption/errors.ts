@@ -17,12 +17,27 @@ export class MongoCryptError extends Error {
 
 /**
  * @public
+ *
+ * An error indicating an invalid argument was provided to an encryption API.
+ */
+export class MongoCryptInvalidArgumentError extends MongoCryptError {
+  /** @internal */
+  constructor(message: string) {
+    super(message);
+  }
+
+  override get name() {
+    return 'MongoCryptInvalidArgumentError';
+  }
+}
+/**
+ * @public
  * An error indicating that `ClientEncryption.createEncryptedCollection()` failed to create data keys
  */
 export class MongoCryptCreateDataKeyError extends MongoCryptError {
   encryptedFields: Document;
   /** @internal */
-  constructor({ encryptedFields, cause }: { encryptedFields: Document; cause: Error }) {
+  constructor(encryptedFields: Document, { cause }: { cause: Error }) {
     super(`Unable to complete creating data keys: ${cause.message}`, { cause });
     this.encryptedFields = encryptedFields;
   }
@@ -39,7 +54,7 @@ export class MongoCryptCreateDataKeyError extends MongoCryptError {
 export class MongoCryptCreateEncryptedCollectionError extends MongoCryptError {
   encryptedFields: Document;
   /** @internal */
-  constructor({ encryptedFields, cause }: { encryptedFields: Document; cause: Error }) {
+  constructor(encryptedFields: Document, { cause }: { cause: Error }) {
     super(`Unable to create collection: ${cause.message}`, { cause });
     this.encryptedFields = encryptedFields;
   }
