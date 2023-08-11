@@ -1977,7 +1977,7 @@ describe('ChangeStream resumability', function () {
           await collection.insertOne({ name: 'bailey' });
           await changeStream.next();
 
-          const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(_batchSize => {
+          const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(async _batchSize => {
             mock.restore();
             const error = new MongoServerError({ message: message });
             error.code = code;
@@ -2137,7 +2137,7 @@ describe('ChangeStream resumability', function () {
           await collection.insertOne({ name: 'bailey' });
           await changeStream.next();
 
-          const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(_batchSize => {
+          const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(async _batchSize => {
             mock.restore();
             const error = new MongoServerError({ message: message });
             error.code = code;
