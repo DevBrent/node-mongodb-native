@@ -2,7 +2,6 @@ import type { Document } from '../bson';
 import { MongoInvalidArgumentError, MongoTailableCursorError } from '../error';
 import type { ExplainVerbosityLike } from '../explain';
 import type { MongoClient } from '../mongo_client';
-import { type TODO_NODE_3286 } from '../mongo_types';
 import type { CollationOptions } from '../operations/command';
 import { CountOperation, type CountOptions } from '../operations/count';
 import { executeOperation, type ExecutionResult } from '../operations/execute_operation';
@@ -91,7 +90,7 @@ export class FindCursor<TSchema = any> extends AbstractCursor<TSchema> {
   }
 
   /** @internal */
-  override async getMore(batchSize: number): Promise<Document> {
+  override async getMore(batchSize: number): Promise<Document | null> {
     // NOTE: this is to support client provided limits in pre-command servers
     const numReturned = this[kNumReturned];
     if (numReturned) {
@@ -101,7 +100,7 @@ export class FindCursor<TSchema = any> extends AbstractCursor<TSchema> {
 
       if (batchSize <= 0) {
         await this.close();
-        return null as TODO_NODE_3286;
+        return null;
       }
     }
 

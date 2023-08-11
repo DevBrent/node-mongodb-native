@@ -610,7 +610,7 @@ export abstract class AbstractCursor<
   protected abstract _initialize(session: ClientSession | undefined): Promise<ExecutionResult>;
 
   /** @internal */
-  async getMore(batchSize: number): Promise<Document> {
+  async getMore(batchSize: number): Promise<Document | null> {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const getMoreOperation = new GetMoreOperation(this[kNamespace], this[kId]!, this[kServer]!, {
       ...this[kOptions],
@@ -734,7 +734,7 @@ async function next<T>(
   // otherwise need to call getMore
   const batchSize = cursor[kOptions].batchSize || 1000;
 
-  let response: Document | undefined;
+  let response: Document | null = null;
   try {
     response = await cursor.getMore(batchSize);
   } catch (error) {

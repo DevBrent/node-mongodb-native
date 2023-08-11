@@ -172,7 +172,7 @@ export class ChangeStreamCursor<
     return { server, session, response };
   }
 
-  override async getMore(batchSize: number): Promise<Document> {
+  override async getMore(batchSize: number): Promise<Document | null> {
     const response = await super.getMore(batchSize);
 
     this.maxWireVersion = maxWireVersion(this.server);
