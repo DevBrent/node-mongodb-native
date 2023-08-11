@@ -1968,7 +1968,7 @@ describe('ChangeStream resumability', function () {
       for (const { error, code, message } of resumableErrorCodes) {
         it(
           `resumes on error code ${code} (${error})`,
-          { requires: { topology: '!single', mongodb: '>=4.2' } },
+          { requires: { topology: '!single', mongodb: '<4.2' } },
           async function () {
             changeStream = collection.watch([]);
             await initIteratorMode(changeStream);
@@ -2132,7 +2132,7 @@ describe('ChangeStream resumability', function () {
       for (const { error, code, message } of resumableErrorCodes) {
         it(
           `resumes on error code ${code} (${error})`,
-          { requires: { topology: '!single', mongodb: '>=4.2' } },
+          { requires: { topology: '!single', mongodb: '<4.2' } },
           async function () {
             changeStream = collection.watch([]);
             await initIteratorMode(changeStream);
