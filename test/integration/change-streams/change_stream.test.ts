@@ -2315,14 +2315,12 @@ describe('ChangeStream resumability', function () {
             await collection.insertOne({ name: 'bailey' });
             await changeStream.next();
 
-            const mock = sinon
-              .stub(changeStream.cursor, 'getMore')
-              .callsFake((_batchSize, callback) => {
-                mock.restore();
-                const error = new MongoServerError({ message: message });
-                error.code = code;
-                callback(error);
-              });
+            const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(async _batchSize => {
+              mock.restore();
+              const error = new MongoServerError({ message: message });
+              error.code = code;
+              throw error;
+            });
 
             try {
               // tryNext is not blocking and on sharded clusters we don't have control of when
@@ -2459,14 +2457,12 @@ describe('ChangeStream resumability', function () {
             await collection.insertOne({ city: 'New York City' });
             await changeStreamIterator.next();
 
-            const mock = sinon
-              .stub(changeStream.cursor, 'getMore')
-              .callsFake((_batchSize, callback) => {
-                mock.restore();
-                const error = new MongoServerError({ message });
-                error.code = code;
-                callback(error);
-              });
+            const mock = sinon.stub(changeStream.cursor, 'getMore').callsFake(async _batchSize => {
+              mock.restore();
+              const error = new MongoServerError({ message });
+              error.code = code;
+              throw error;
+            });
 
             const docs = [{ city: 'Seattle' }, { city: 'Boston' }];
             await collection.insertMany(docs);
