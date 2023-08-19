@@ -466,7 +466,7 @@ export class AutoEncrypter {
       proxyOptions: this._proxyOptions,
       tlsOptions: this._tlsOptions
     });
-    return stateMachine.executeAsync<Document>(this, context);
+    return stateMachine.execute<Document>(this, context);
   }
 
   /**
@@ -486,7 +486,7 @@ export class AutoEncrypter {
     });
 
     const decorateResult = this[kDecorateResult];
-    const result = await stateMachine.executeAsync<Document>(this, context);
+    const result = await stateMachine.execute<Document>(this, context);
     if (decorateResult) {
       decorateDecryptionResult(result, response);
     }
